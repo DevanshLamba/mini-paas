@@ -1,0 +1,54 @@
+# Slim Argo CD for an 8 GB laptop.
+# Chart: argo/argo-cd 10.9.6 (Argo CD v3.5.3). Installed by scripts/install-argocd.ps1.
+# Only the core GitOps loop runs: API server/UI, repo-server, application controller, Redis.
+
+configs:
+  params:
+    # Plain HTTP inside the cluster. Access is via `kubectl port-forward` (local only),
+    # so a self-signed TLS cert would add browser warnings without adding security.
+    server.insecure: true
+    # Fewer worker goroutines: we manage a handful of apps, not hundreds.
+    controller.status.processors: 5
+    controller.operation.processors: 3
+    reposerver.parallelism.limit: 2
+  cm:
+    # GitHub can't send webhooks to a laptop, so Argo CD polls the repo.
+    # Default is 120s + up to 60s jitter; 60s + 10s keeps demos snappy for little cost.
+    timeout.reconciliation: 60s
+    timeout.reconciliation.jitter: 10s
+
+# SSO connector: not needed, we log in as the local admin.
+dex:
+  enabled: false
+
+# Slack/email notifications: not used.
+notifications:
+  enabled: false
+
+# ApplicationSet generates many Applications from templates; we define ours by hand.
+# The chart has no on/off switch, so run zero replicas.
+applicationSet:
+  replicas: 0
+
+controller:
+  replicas: 1
+  resources:
+    requests: { cpu: 100m, memory: 192Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+
+repoServer:
+  replicas: 1
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { cpu: 500m, memory: 256Mi }
+
+server:
+  replicas: 1
+  resources:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits: { cpu: 250m, memory: 192Mi }
+
+redis:
+  resources:
+    requests: { cpu: 10m, memory: 32Mi }
+    limits: { cpu: 100m, memory: 96Mi }
