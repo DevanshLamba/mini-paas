@@ -1,0 +1,118 @@
+{
+  "environment": "local",
+  "kube_context": "current",
+  "timestamp_utc": "20261001T155734Z",
+  "cluster": {
+    "nodes": [
+      {
+        "name": "k3d-minipaas-agent-0",
+        "arch": "amd64",
+        "kubelet": "v1.36.5+k3s1",
+        "os_image": "K3s v1.36.5+k3s1",
+        "cpu_capacity": "4",
+        "memory_capacity": "4014968Ki"
+      },
+      {
+        "name": "k3d-minipaas-server-0",
+        "arch": "amd64",
+        "kubelet": "v1.36.5+k3s1",
+        "os_image": "K3s v1.36.5+k3s1",
+        "cpu_capacity": "4",
+        "memory_capacity": "4014968Ki"
+      }
+    ]
+  },
+  "app": {
+    "namespace": "sampleapi-dev",
+    "image": "ghcr.io/devanshlamba/mini-paas:9c5cf2f",
+    "replicas": 2,
+    "resources": {
+      "limits": {
+        "cpu": "500m",
+        "memory": "128Mi"
+      },
+      "requests": {
+        "cpu": "50m",
+        "memory": "64Mi"
+      }
+    },
+    "container_restarts_during_test": 2
+  },
+  "k6": {
+    "target": "http://sampleapi.sampleapi-dev.svc",
+    "work_iterations": 20000,
+    "step_duration": "60s",
+    "total": {
+      "requests": {
+        "count": 9677,
+        "rate": 53.17
+      },
+      "latency_ms": {
+        "avg": 1831.93,
+        "med": 82.05,
+        "p90": 4703.21,
+        "p95": 5169.34,
+        "p99": 10000.07,
+        "max": 10001.16
+      },
+      "failed_rate": 0.03627157176810995,
+      "dropped_iterations": 2325
+    },
+    "steps": [
+      {
+        "target_rps": 20,
+        "requests": {
+          "count": 1201,
+          "rate": 6.6
+        },
+        "latency_ms": {
+          "avg": 12.31,
+          "med": 12.29,
+          "p90": 12.91,
+          "p95": 13.24,
+          "p99": 16.57,
+          "max": 48.72
+        },
+        "failed_rate": 0,
+        "dropped_iterations": 0,
+        "achieved_rps": 20.0
+      },
+      {
+        "target_rps": 60,
+        "requests": {
+          "count": 3601,
+          "rate": 19.79
+        },
+        "latency_ms": {
+          "avg": 12.28,
+          "med": 10.6,
+          "p90": 11.46,
+          "p95": 12.39,
+          "p99": 80.16,
+          "max": 212.24
+        },
+        "failed_rate": 0,
+        "dropped_iterations": 0,
+        "achieved_rps": 60.0
+      },
+      {
+        "target_rps": 120,
+        "requests": {
+          "count": 4875,
+          "rate": 26.79
+        },
+        "latency_ms": {
+          "avg": 3624.32,
+          "med": 3681.48,
+          "p90": 5166.31,
+          "p95": 9290.74,
+          "p99": 10000.36,
+          "max": 10001.16
+        },
+        "failed_rate": 0.072,
+        "dropped_iterations": 2325,
+        "achieved_rps": 81.2
+      }
+    ]
+  }
+}
