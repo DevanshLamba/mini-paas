@@ -29,7 +29,6 @@ env:
   # ghcr.io requires lowercase names; github.repository is "DevanshLamba/mini-paas".
   IMAGE: ghcr.io/devanshlamba/mini-paas
   PYTHON_VERSION: "3.13"
-  TRIVY_VERSION: v0.74.0
 
 defaults:
   run:
@@ -85,16 +84,27 @@ jobs:
           if-no-files-found: error
 
   build-scan-push:
-    name: Build, scan, push
+    name: Build, scan, push (amd64 + arm64)
     needs: [lint, test]
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write         # push to ghcr.io (only used on main)
       security-events: write  # upload Trivy SARIF to the Security tab
     env:
       PUSH: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+      PLATFORMS: linux/amd64,linux/arm64
+      # Throwaway registry that lives only for this job. The multi-arch image is built once
+      # into it, every architecture is scanned and smoke-tested from it, and only then are
+      # the identical bytes copied to ghcr.io.
+      STAGING: localhost:5000/sampleapi
+      TRIVY_INSECURE: "true"  # the staging registry is plain HTTP on localhost
+    services:
+      registry:
+        image: registry:3.1.2@sha256:ddf754342cfc8acc51a56d5d0ab6af06826461864460636d8bd5c546dab2a7b8
+        ports:
+          - 5000:5000
     outputs:
       sha: ${{ steps.vars.outputs.sha }}
     steps:
@@ -106,55 +116,91 @@ jobs:
         id: vars
         run: echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # QEMU lets the amd64 runner build and run arm64 images (Oracle Ampere A1 is arm64).
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          image: docker.io/tonistiigi/binfmt:qemu-v10.2.3@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
+          platforms: arm64
 
-      # Build once and load into the runner's Docker, so the scan and the push use the
-      # exact same image bytes.
-      - name: Build image
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: network=host  # so BuildKit can reach the staging registry
+
+      - name: Build multi-arch image into staging registry
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         env:
           # Keep the build summary but skip the extra .dockerbuild artifact on every run.
           DOCKER_BUILD_RECORD_UPLOAD: "false"
         with:
           context: app
-          load: true
-          push: false
+          platforms: ${{ env.PLATFORMS }}
+          push: true
           build-args: APP_VERSION=${{ steps.vars.outputs.sha }}
-          tags: |
-            ${{ env.IMAGE }}:${{ steps.vars.outputs.sha }}
-            ${{ env.IMAGE }}:latest
+          tags: ${{ env.STAGING }}:${{ steps.vars.outputs.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Scan 1: full report for the Security tab. It never fails the build.
-      - name: Trivy scan (SARIF report)
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      - uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
         with:
-          version: ${{ env.TRIVY_VERSION }}
-          image-ref: ${{ env.IMAGE }}:${{ steps.vars.outputs.sha }}
-          format: sarif
-          output: trivy-results.sarif
-          exit-code: "0"
+          version: v0.74.0  # pinned; bump deliberately
 
-      - name: Upload SARIF to GitHub Security tab
+      # Scan 1: full reports per architecture for the Security tab. Never fails the build.
+      - name: Trivy scan (SARIF reports)
+        env:
+          SHA: ${{ steps.vars.outputs.sha }}
+        run: |
+          for platform in ${PLATFORMS//,/ }; do
+            trivy image --quiet --platform "$platform" --format sarif \
+              --output "$GITHUB_WORKSPACE/trivy-${platform#linux/}.sarif" "$STAGING:$SHA"
+          done
+
+      - name: Upload SARIF (amd64)
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
-          sarif_file: trivy-results.sarif
-          category: trivy-image
+          sarif_file: trivy-amd64.sarif
+          category: trivy-image  # same category as before, so existing alerts keep their history
 
-      # Scan 2: the gate. Fail on HIGH/CRITICAL vulnerabilities that have a fix available
-      # (unfixed ones can't be acted on, so they're reported but don't block).
-      - name: Trivy scan (gate on fixable HIGH/CRITICAL)
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      - name: Upload SARIF (arm64)
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
-          version: ${{ env.TRIVY_VERSION }}
-          image-ref: ${{ env.IMAGE }}:${{ steps.vars.outputs.sha }}
-          format: table
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"
-          skip-setup-trivy: true
+          sarif_file: trivy-arm64.sarif
+          category: trivy-image-arm64
+
+      # Scan 2: the gate, for every architecture. Fail on HIGH/CRITICAL vulnerabilities that
+      # have a fix available (unfixed ones can't be acted on, so they're reported, not blocking).
+      - name: Trivy gate (fixable HIGH/CRITICAL)
+        env:
+          SHA: ${{ steps.vars.outputs.sha }}
+        run: |
+          for platform in ${PLATFORMS//,/ }; do
+            echo "::group::Trivy gate ${platform}"
+            trivy image --quiet --platform "$platform" --severity HIGH,CRITICAL \
+              --ignore-unfixed --exit-code 1 "$STAGING:$SHA"
+            echo "::endgroup::"
+          done
+
+      # Every architecture must actually start and answer before anything is published.
+      - name: Smoke test each architecture
+        env:
+          SHA: ${{ steps.vars.outputs.sha }}
+        run: |
+          for platform in ${PLATFORMS//,/ }; do
+            cid=$(docker run -d --platform "$platform" -p 127.0.0.1::8000 "$STAGING:$SHA")
+            port=$(docker port "$cid" 8000/tcp | head -1 | sed 's/.*://')
+            ok=""
+            for _ in $(seq 1 60); do
+              if curl -sf "http://127.0.0.1:${port}/ready" >/dev/null; then ok=1; break; fi
+              sleep 1
+            done
+            arch=$(docker exec "$cid" python -c 'import platform; print(platform.machine())')
+            version=$(curl -sf "http://127.0.0.1:${port}/version" | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')
+            docker rm -f "$cid" >/dev/null
+            echo "${platform}: ready=${ok:-no} arch=${arch} version=${version}"
+            [ -n "$ok" ] && [ "$version" = "$SHA" ] || { echo "::error::smoke test failed for ${platform}"; exit 1; }
+            echo "| ${platform} | ${arch} | ${version} | ✅ |" >> "$RUNNER_TEMP/smoke.md"
+          done
 
       - name: Log in to ghcr.io
         if: env.PUSH == 'true'
@@ -164,23 +210,30 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Push image
+      # Copy the scanned, smoke-tested index to ghcr.io unchanged (same digest).
+      - name: Publish to ghcr.io
         if: env.PUSH == 'true'
-        run: docker push --all-tags "$IMAGE"
+        env:
+          SHA: ${{ steps.vars.outputs.sha }}
+        run: |
+          docker buildx imagetools create \
+            --tag "$IMAGE:$SHA" --tag "$IMAGE:latest" "$STAGING:$SHA"
+          docker buildx imagetools inspect "$IMAGE:$SHA"
 
       - name: Job summary
         if: always()
         env:
           SHA: ${{ steps.vars.outputs.sha }}
         run: |
-          size=$(docker image inspect "$IMAGE:$SHA" --format '{{.Size}}' 2>/dev/null || echo 0)
           {
-            echo "### Image"
-            echo "| | |"
-            echo "|---|---|"
-            echo "| Tag | \`$IMAGE:$SHA\` |"
-            echo "| Size (uncompressed) | $((size / 1024 / 1024)) MiB |"
-            echo "| Pushed | $PUSH |"
+            echo "### Image \`$IMAGE:$SHA\` (pushed: $PUSH)"
+            echo "| Platform | Arch reported | Version | Smoke test |"
+            echo "|---|---|---|---|"
+            cat "$RUNNER_TEMP/smoke.md" 2>/dev/null || echo "| - | - | - | not run |"
+            echo
+            echo '```'
+            docker buildx imagetools inspect "$STAGING:$SHA" 2>/dev/null | grep -E "^(Name|Digest)|Platform" || true
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
   # GitOps hand-off: record the new image in git; Argo CD notices and deploys it.
