@@ -15,7 +15,7 @@ ships as a multi-stage, non-root container image.
 | `src/sampleapi/metrics.py` | Prometheus RED metrics and the middleware that records them. Labels use the route template, not the raw path, to bound cardinality |
 | `src/sampleapi/logging_setup.py` | One JSON object per log line on stdout, so Loki can filter by field. Also reroutes uvicorn's logs into the same format |
 | `src/sampleapi/items.py` | In-memory CRUD with a lock (sync endpoints run in a thread pool). Per-pod state makes pod kills visible |
-| `tests/` | 19 pytest tests: probe semantics, metrics labels, `/work` correctness and bounds, CRUD and validation |
+| `tests/` | 29 pytest tests: probe semantics, per-route metric and log labels, `/work` correctness and bounds, CRUD and validation |
 | `requirements.txt` | Pinned runtime dependencies, so builds are reproducible |
 | `requirements-dev.txt` | Test and lint tools layered on the runtime dependencies (`-r`) |
 | `pyproject.toml` | pytest (src path, coverage) and ruff (lint and format) configuration |
@@ -43,7 +43,7 @@ ships as a multi-stage, non-root container image.
 
 ## Verified results (from this machine, 2026-10-01)
 
-- `pytest`: 19 passed, 99% coverage, no warnings
+- `pytest`: 29 passed, 99% coverage, no warnings
 - `ruff check` and `ruff format --check`: clean
 - Container: `healthy`, runs as `uid=10001`, root filesystem read-only
 - Image `sampleapi:local`: 218 MB. Idle memory: ~39 MiB

@@ -10,6 +10,7 @@ import uuid
 
 from fastapi import Request, Response
 from prometheus_client import Counter, Gauge, Histogram
+from starlette.routing import Match
 
 REQUESTS = Counter(
     "http_requests_total",
@@ -42,7 +43,15 @@ def _route_template(request: Request) -> str:
     # Label with the route template ("/items/{item_id}"), not the raw path ("/items/42"),
     # so one label value per endpoint keeps Prometheus cardinality bounded.
     route = request.scope.get("route")
-    return getattr(route, "path", "unmatched")
+    if route is not None:
+        return route.path
+    # Only FastAPI's APIRoute sets scope["route"]. Plain Starlette routes (/docs,
+    # /openapi.json) don't, and neither do method mismatches (405), so match them here.
+    for candidate in request.app.router.routes:
+        match, _ = candidate.matches(request.scope)
+        if match != Match.NONE:
+            return candidate.path
+    return "unmatched"
 
 
 async def metrics_middleware(request: Request, call_next) -> Response:
