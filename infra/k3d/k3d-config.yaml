@@ -1,0 +1,39 @@
+# k3d cluster definition (declarative, so the cluster is reproducible and reviewable in git).
+# Create with: scripts/cluster-up.ps1
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: minipaas
+servers: 1
+agents: 1
+# Pinned k3s (Kubernetes 1.36): one minor behind the newest release, so add-ons
+# like KEDA and Chaos Mesh are known to support it. Matches the local kubectl 1.36.
+image: rancher/k3s:v1.36.5-k3s1
+
+# Local OCI registry: images pushed to localhost:5050 can be pulled by the cluster
+# without going through ghcr.io. k3d wires it into each node's containerd config.
+registries:
+  create:
+    name: minipaas-registry.localhost
+    host: "127.0.0.1"
+    hostPort: "5050"
+
+options:
+  k3d:
+    wait: true
+    # Fail (and roll back) instead of hanging forever if a node never becomes ready.
+    timeout: "180s"
+    # With a single server there is nothing to load-balance; skipping the extra
+    # nginx container saves memory.
+    disableLoadbalancer: true
+  k3s:
+    extraArgs:
+      # Traefik: we use port-forward now and a Cloudflare Tunnel later, so no ingress controller is needed.
+      - arg: --disable=traefik
+        nodeFilters: ["server:*"]
+      # metrics-server: installed explicitly with pinned settings in Phase 6 (HPA).
+      - arg: --disable=metrics-server
+        nodeFilters: ["server:*"]
+  kubeconfig:
+    updateDefaultKubeconfig: true
+    switchCurrentContext: true
