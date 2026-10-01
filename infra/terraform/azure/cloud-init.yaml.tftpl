@@ -1,0 +1,23 @@
+#cloud-config
+# First-boot setup for the k3s node. Runs once, as root.
+package_update: true
+package_upgrade: true
+packages:
+  - curl
+
+write_files:
+  # k3s reads this on start. Traefik is KEPT: it is the single ingress for both the
+  # public IP (ports 80/443) and the Cloudflare Tunnel, so routing is defined once.
+  - path: /etc/rancher/k3s/config.yaml
+    permissions: "0600"
+    content: |
+      node-name: minipaas-azure
+      write-kubeconfig-mode: "0600"
+      # Encrypt Kubernetes Secrets at rest in the k3s datastore.
+      secrets-encryption: true
+
+runcmd:
+  # Install script fetched from the same pinned release tag as the binary.
+  - curl -sfL "https://raw.githubusercontent.com/k3s-io/k3s/${replace(k3s_version, "+", "%2B")}/install.sh" -o /tmp/k3s-install.sh
+  - INSTALL_K3S_VERSION="${k3s_version}" sh /tmp/k3s-install.sh
+  - touch /var/lib/cloud/instance/k3s-ready
