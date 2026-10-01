@@ -18,4 +18,4 @@ labels:
 images:
   - name: sampleapi
     newName: ghcr.io/devanshlamba/mini-paas
-    newTag: 9c5cf2f
+    newTag: 98e1566
