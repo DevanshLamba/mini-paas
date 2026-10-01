@@ -1,5 +1,8 @@
 # Mini-PaaS
 
+[![CI](https://github.com/DevanshLamba/mini-paas/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/DevanshLamba/mini-paas/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A self-healing mini Platform-as-a-Service that runs entirely on a laptop:
 **GitOps deploys, autoscaling, observability and chaos testing on a local k3d cluster**, built
 only from free and open-source tools.
