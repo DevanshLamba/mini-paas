@@ -239,7 +239,7 @@ jobs:
   # GitOps hand-off: record the new image in git; Argo CD notices and deploys it.
   # CI never talks to the cluster, so it holds no cluster credentials.
   update-manifests:
-    name: Update dev manifest
+    name: Update dev + cloud manifests
     needs: build-scan-push
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
@@ -252,7 +252,8 @@ jobs:
       cancel-in-progress: false
     env:
       SHA: ${{ needs.build-scan-push.outputs.sha }}
-      FILE: deploy/overlays/dev/kustomization.yaml
+      # Every environment that follows main. Each overlay stays self-contained.
+      OVERLAYS: dev cloud
     defaults:
       run:
         working-directory: .
@@ -265,9 +266,12 @@ jobs:
 
       - name: Set image tag
         run: |
-          sed -i -E "s/^(\s*newTag:\s*).*/\1${SHA}/" "$FILE"
-          grep -qE "^\s*newTag: ${SHA}$" "$FILE" || { echo "::error::tag not updated"; exit 1; }
-          kubectl kustomize deploy/overlays/dev | grep -F "image: ${IMAGE}:${SHA}"
+          for env in $OVERLAYS; do
+            file="deploy/overlays/${env}/kustomization.yaml"
+            sed -i -E "s/^(\s*newTag:\s*).*/\1${SHA}/" "$file"
+            grep -qE "^\s*newTag: ${SHA}$" "$file" || { echo "::error::tag not updated in ${file}"; exit 1; }
+            kubectl kustomize "deploy/overlays/${env}" | grep -F "image: ${IMAGE}:${SHA}"
+          done
 
       - name: Commit and push
         run: |
@@ -277,7 +281,7 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -am "deploy(dev): sampleapi ${SHA}" \
+          git commit -am "deploy(dev,cloud): sampleapi ${SHA}" \
             -m "Image ${IMAGE}:${SHA} built by ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           # Someone may have pushed meanwhile: rebase onto it and retry (never force).
           for attempt in 1 2 3; do

@@ -1,0 +1,99 @@
+name: Ephemeral cluster load test
+
+# Fallback "cloud" environment that needs no cloud account: a throwaway k3d cluster on a
+# free GitHub-hosted runner, built from the same k3d config as the laptop. It deploys the
+# app with kustomize (no Argo CD: the cluster lives for minutes, so there is nothing to
+# keep in sync), runs the shared k6 scenario as an in-cluster Job and uploads the results.
+on:
+  workflow_dispatch:
+    inputs:
+      overlay:
+        description: Which overlay to deploy
+        type: choice
+        options: [cloud, dev]
+        default: cloud
+      step_duration:
+        description: Duration of each load step (20/60/120 req/s)
+        type: string
+        default: 60s
+      work_iterations:
+        description: SHA-256 iterations per request (CPU cost)
+        type: string
+        default: "20000"
+
+permissions:
+  contents: read  # checkout only; artifact upload needs no token scope
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+env:
+  K3D_VERSION: v5.9.0
+
+jobs:
+  loadtest:
+    name: k3d + k6 (${{ inputs.overlay }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install k3d (checksum-verified)
+        run: |
+          base="https://github.com/k3d-io/k3d/releases/download/${K3D_VERSION}"
+          curl -fsSLo k3d-linux-amd64 "${base}/k3d-linux-amd64"
+          curl -fsSLo checksums.txt "${base}/checksums.txt"
+          grep -E " (\./|_dist/)?k3d-linux-amd64$" checksums.txt | awk '{print $1"  k3d-linux-amd64"}' | sha256sum -c -
+          sudo install -m 0755 k3d-linux-amd64 /usr/local/bin/k3d
+          rm -f k3d-linux-amd64 checksums.txt
+          k3d version
+
+      - name: Create cluster (same config as the laptop)
+        run: |
+          k3d cluster create --config infra/k3d/k3d-config.yaml
+          kubectl wait --for=condition=Ready nodes --all --timeout=120s
+          kubectl get nodes -o wide
+
+      - name: Deploy ${{ inputs.overlay }} overlay
+        env:
+          OVERLAY: ${{ inputs.overlay }}
+        run: |
+          ns=$(kubectl kustomize "deploy/overlays/${OVERLAY}" | awk '/^kind: Namespace/{f=1} f && /^  name:/{print $2; exit}')
+          echo "APP_NS=${ns}" >> "$GITHUB_ENV"
+          kubectl apply -k "deploy/overlays/${OVERLAY}"
+          kubectl -n "${ns}" rollout status deployment/sampleapi --timeout=180s
+          kubectl -n "${ns}" get pods -o wide
+
+      - name: Run k6 scenario
+        env:
+          OVERLAY: ${{ inputs.overlay }}
+          STEP: ${{ inputs.step_duration }}
+          ITERATIONS: ${{ inputs.work_iterations }}
+        run: |
+          loadtest/run-k6-job.sh --env "gha-${OVERLAY}" --app-namespace "${APP_NS}" \
+            --step "${STEP}" --iterations "${ITERATIONS}" | tee "$RUNNER_TEMP/k6.txt"
+          {
+            echo "### k6 results (k3d on ubuntu-24.04 runner, overlay: ${OVERLAY})"
+            echo '```'
+            sed -n '/target rps/,$p' "$RUNNER_TEMP/k6.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: k6-results-${{ inputs.overlay }}-${{ github.run_id }}
+          path: loadtest/results/*.json
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          kubectl get pods -A -o wide || true
+          kubectl -n loadtest logs job/k6-run --tail=50 || true
+          kubectl get events -A --sort-by=.lastTimestamp | tail -30 || true
