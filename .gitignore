@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Node (dashboard tooling, k6 helpers)
+node_modules/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Secrets — never commit plaintext; only SealedSecrets go in git
+*.env
+.env*
+!.env.example
+*-secret.yaml
+!*sealed*-secret.yaml
+kubeconfig*
+
+# Load-test raw output that is too large for git (summaries are kept)
+loadtest/results/**/*.raw.json
