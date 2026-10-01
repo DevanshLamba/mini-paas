@@ -6,11 +6,11 @@
     - TF_VAR_ssh_allowed_cidr is your current public IP as a /32, so SSH is open to you only.
     The OCI provider itself reads the API key from ~/.oci/config.
 .EXAMPLE
-    .\scripts\oci.ps1 init
-    .\scripts\oci.ps1 plan -out tfplan
-    .\scripts\oci.ps1 apply tfplan
-    .\scripts\oci.ps1 destroy
-    .\scripts\oci.ps1 -Tool tofu plan
+    .\infra\terraform\oci-unused\oci.ps1 init
+    .\infra\terraform\oci-unused\oci.ps1 plan -out tfplan
+    .\infra\terraform\oci-unused\oci.ps1 apply tfplan
+    .\infra\terraform\oci-unused\oci.ps1 destroy
+    .\infra\terraform\oci-unused\oci.ps1 -Tool tofu plan
 #>
 # A simple (non-advanced) script on purpose: everything not bound below is passed to
 # Terraform via $args. An advanced script would claim flags like -out as -OutVariable.
