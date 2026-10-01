@@ -59,6 +59,7 @@ done
 "${K[@]}" -n loadtest logs job/k6-run > "$WORK/k6.log"
 "${K[@]}" -n "$APP_NS" get pods -l app.kubernetes.io/name=sampleapi -o json > "$WORK/pods-after.json"
 
+mkdir -p "$OUT_DIR"
 OUT="$OUT_DIR/${ENV_NAME}-${STAMP}.json"
 "$PY" - "$WORK" "$OUT" "$ENV_NAME" "${CONTEXT:-current}" "$STAMP" <<'PYEOF'
 import json, re, sys, pathlib

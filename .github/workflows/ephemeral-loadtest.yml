@@ -30,6 +30,13 @@ concurrency:
 
 env:
   K3D_VERSION: v5.9.0
+  RESULTS_DIR: loadtest/results/this-run  # only this run's files get uploaded
+
+# Explicit `shell: bash` turns on -o pipefail. GitHub's implicit default (`bash -e`) does
+# not, which once let `script | tee` hide a failing script behind tee's exit code.
+defaults:
+  run:
+    shell: bash
 
 jobs:
   loadtest:
@@ -73,8 +80,8 @@ jobs:
           STEP: ${{ inputs.step_duration }}
           ITERATIONS: ${{ inputs.work_iterations }}
         run: |
-          loadtest/run-k6-job.sh --env "gha-${OVERLAY}" --app-namespace "${APP_NS}" \
-            --step "${STEP}" --iterations "${ITERATIONS}" | tee "$RUNNER_TEMP/k6.txt"
+          bash loadtest/run-k6-job.sh --env "gha-${OVERLAY}" --app-namespace "${APP_NS}" \
+            --step "${STEP}" --iterations "${ITERATIONS}" --out-dir "${RESULTS_DIR}" | tee "$RUNNER_TEMP/k6.txt"
           {
             echo "### k6 results (k3d on ubuntu-24.04 runner, overlay: ${OVERLAY})"
             echo '```'
@@ -87,7 +94,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: k6-results-${{ inputs.overlay }}-${{ github.run_id }}
-          path: loadtest/results/*.json
+          path: ${{ env.RESULTS_DIR }}/*.json
           retention-days: 30
           if-no-files-found: error
 
