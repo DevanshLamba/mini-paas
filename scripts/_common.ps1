@@ -8,8 +8,9 @@ $ClusterName   = 'minipaas'
 $K3dConfig     = Join-Path $RepoRoot 'infra\k3d\k3d-config.yaml'
 $RegistryPush  = 'localhost:5050'                      # address the host pushes to
 $RegistryPull  = 'minipaas-registry.localhost:5050'    # address the cluster pulls from
-$AppNamespace  = 'sampleapi-dev'
-$DevOverlay    = Join-Path $RepoRoot 'deploy\overlays\dev'
+# deploy.ps1's inner loop. The dev overlay/namespace belong to Argo CD (GitOps).
+$LocalNamespace = 'sampleapi-local'
+$LocalOverlay  = Join-Path $RepoRoot 'deploy\overlays\local'
 
 # Pick up tools installed (e.g. by winget) after this terminal was opened.
 $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +

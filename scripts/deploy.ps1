@@ -1,14 +1,17 @@
 <#
 .SYNOPSIS
-    Build the app image, push it to the local registry and deploy the dev overlay.
+    Inner loop: build the app image, push it to the local registry and deploy it to the
+    sampleapi-local namespace, without going through git.
 .DESCRIPTION
+    The dev environment (sampleapi-dev) is owned by Argo CD and only changes through git
+    (see docs/phases/04-gitops.md). This script is for trying uncommitted code quickly.
+
     The image tag defaults to the short git SHA, plus a timestamp when app/ has uncommitted
-    changes, so every deploy of new code gets a unique, traceable tag. The tag is
-    written into deploy/overlays/dev/kustomization.yaml, the same change CI will make
-    in the GitOps flow (Phase 4).
+    changes, so every deploy gets a unique, traceable tag. The tag is substituted into the
+    rendered manifests at apply time, so no tracked file is modified.
 .EXAMPLE
     .\scripts\deploy.ps1
-    .\scripts\deploy.ps1 -Tag v1.0.0
+    .\scripts\deploy.ps1 -Tag experiment-1
 #>
 [CmdletBinding()]
 param(
@@ -32,14 +35,12 @@ Invoke-Native docker build --build-arg "APP_VERSION=$Tag" -t "$RegistryPush/$ima
 Write-Step "Pushing to $RegistryPush"
 Invoke-Native docker push "$RegistryPush/$image"
 
-Write-Step "Setting dev overlay image tag to $Tag"
-$kustomization = Join-Path $DevOverlay 'kustomization.yaml'
-$content = [IO.File]::ReadAllText($kustomization)
-$updated = $content -replace '(?m)^(\s*newTag:\s*).*$', "`${1}$Tag"
-# Write UTF-8 without BOM and keep LF line endings (PowerShell 5.1's Set-Content adds a BOM).
-[IO.File]::WriteAllText($kustomization, $updated, (New-Object Text.UTF8Encoding $false))
+Write-Step "Applying deploy/overlays/local with image $RegistryPull/$image"
+$rendered = (kubectl kustomize $LocalOverlay) -join "`n"
+if ($LASTEXITCODE -ne 0) { throw 'kubectl kustomize failed' }
+$rendered = $rendered.Replace("$RegistryPull/sampleapi:local", "$RegistryPull/$image")
+$rendered | kubectl apply -f -
+if ($LASTEXITCODE -ne 0) { throw 'kubectl apply failed' }
 
-Write-Step 'Applying deploy/overlays/dev'
-Invoke-Native kubectl apply -k $DevOverlay
-Invoke-Native kubectl -n $AppNamespace rollout status deployment/sampleapi --timeout=180s
-Invoke-Native kubectl -n $AppNamespace get pods -o wide
+Invoke-Native kubectl -n $LocalNamespace rollout status deployment/sampleapi --timeout=180s
+Invoke-Native kubectl -n $LocalNamespace get pods -o wide

@@ -1,0 +1,27 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Inner-loop overlay for scripts/deploy.ps1: test uncommitted code in the cluster without
+# going through git. Argo CD does not watch this overlay or its namespace.
+namespace: sampleapi-local
+
+resources:
+  - namespace.yaml
+  - ../../base
+
+labels:
+  - pairs:
+      app.kubernetes.io/environment: local
+    includeSelectors: false
+    includeTemplates: true
+
+replicas:
+  - name: sampleapi
+    count: 1
+
+# deploy.ps1 swaps the ":local" tag for the freshly built one at apply time,
+# so this file never changes.
+images:
+  - name: sampleapi
+    newName: minipaas-registry.localhost:5050/sampleapi
+    newTag: local
