@@ -19,6 +19,7 @@ observe it, and Chaos Mesh tries to break it.
 | [`app/`](app/) | Sample FastAPI service: the workload the platform deploys |
 | [`deploy/`](deploy/) | Kustomize manifests: the GitOps source of truth that ArgoCD watches |
 | [`infra/`](infra/) | k3d cluster config, Helm values for platform components, dashboards |
+| [`scripts/`](scripts/) | PowerShell helpers: `cluster-up`, `cluster-down`, `deploy` |
 | [`ci/`](ci/) | Supporting CI config (scanner settings, helper scripts) |
 | [`.github/workflows/`](.github/workflows/) | GitHub Actions pipelines |
 | [`loadtest/`](loadtest/) | k6 scenarios and result-analysis scripts |
@@ -26,19 +27,26 @@ observe it, and Chaos Mesh tries to break it.
 | [`dashboard/`](dashboard/) | Control plane: FastAPI + HTMX UI to list, deploy and roll back apps |
 | [`docs/`](docs/) | Architecture, per-phase notes and the project report |
 
-## Quick start (Phase 1: local only)
+## Quick start
 
-```bash
-cd app
-docker compose up --build
-curl http://localhost:8000/health
+Prerequisites (Docker Desktop with cgroup v2, k3d, kubectl): see
+[docs/phases/00-prerequisites.md](docs/phases/00-prerequisites.md).
+
+```powershell
+.\scripts\cluster-up.ps1      # k3d cluster: 1 server + 1 agent + local registry
+.\scripts\deploy.ps1          # build, push, deploy deploy/overlays/dev
+kubectl -n sampleapi-dev port-forward svc/sampleapi 8080:80
+curl.exe localhost:8080/
+.\scripts\cluster-down.ps1    # stop the cluster and free RAM (state is kept)
 ```
+
+Run the app alone without Kubernetes: `cd app; docker compose up --build`.
 
 ## Roadmap
 
 - [x] 0. Machine prerequisites
 - [x] 1. Sample app, Docker, tests
-- [ ] 2. k3d cluster and Kubernetes manifests
+- [x] 2. k3d cluster and Kubernetes manifests
 - [ ] 3. CI: GitHub Actions, Trivy, ghcr.io
 - [ ] 4. GitOps with ArgoCD and a rollback demo
 - [ ] 5. Prometheus, Grafana, Loki
