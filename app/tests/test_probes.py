@@ -2,6 +2,13 @@ def test_root_reports_version_and_pod(client):
     assert client.get("/").json() == {"service": "sampleapi", "version": "test", "pod": "test-pod"}
 
 
+def test_version_endpoint(client):
+    body = client.get("/version").json()
+    assert body["version"] == "test"
+    assert body["pod"] == "test-pod"
+    assert body["python"].startswith("3.")
+
+
 def test_health_ok(client):
     r = client.get("/health")
     assert r.status_code == 200

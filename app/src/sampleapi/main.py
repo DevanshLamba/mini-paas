@@ -2,6 +2,7 @@
 
 import hashlib
 import logging
+import platform
 import time
 from contextlib import asynccontextmanager
 
@@ -42,6 +43,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def root() -> dict:
         # Returning the pod name shows load balancing and rollouts in action.
         return {"service": "sampleapi", "version": settings.version, "pod": settings.pod_name}
+
+    @app.get("/version")
+    def version() -> dict:
+        # What's running where: handy for checking a GitOps rollout or rollback.
+        return {
+            "version": settings.version,
+            "python": platform.python_version(),
+            "pod": settings.pod_name,
+        }
 
     @app.get("/health")
     def health(request: Request, response: Response) -> dict:
