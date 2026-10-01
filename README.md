@@ -22,7 +22,7 @@ observe it, and Chaos Mesh tries to break it.
 | [`app/`](app/) | Sample FastAPI service: the workload the platform deploys |
 | [`deploy/`](deploy/) | Kustomize manifests: the GitOps source of truth that ArgoCD watches |
 | [`infra/`](infra/) | k3d cluster config, Helm values for platform components, dashboards |
-| [`scripts/`](scripts/) | PowerShell helpers: `cluster-up`, `cluster-down`, `deploy` |
+| [`scripts/`](scripts/) | PowerShell helpers: `cluster-up`, `cluster-down`, `install-argocd`, `deploy` |
 | [`ci/`](ci/) | Supporting CI config (scanner settings, helper scripts) |
 | [`.github/workflows/`](.github/workflows/) | GitHub Actions pipelines |
 | [`loadtest/`](loadtest/) | k6 scenarios and result-analysis scripts |
@@ -37,9 +37,10 @@ Prerequisites (Docker Desktop with cgroup v2, k3d, kubectl): see
 
 ```powershell
 .\scripts\cluster-up.ps1      # k3d cluster: 1 server + 1 agent + local registry
-.\scripts\deploy.ps1          # build, push, deploy deploy/overlays/dev
+.\scripts\install-argocd.ps1  # Argo CD + the sampleapi-dev Application (GitOps)
 kubectl -n sampleapi-dev port-forward svc/sampleapi 8080:80
-curl.exe localhost:8080/
+curl.exe localhost:8080/version
+.\scripts\deploy.ps1          # optional inner loop: uncommitted code -> sampleapi-local
 .\scripts\cluster-down.ps1    # stop the cluster and free RAM (state is kept)
 ```
 
@@ -51,7 +52,7 @@ Run the app alone without Kubernetes: `cd app; docker compose up --build`.
 - [x] 1. Sample app, Docker, tests
 - [x] 2. k3d cluster and Kubernetes manifests
 - [x] 3. CI: GitHub Actions, Trivy, ghcr.io
-- [ ] 4. GitOps with ArgoCD and a rollback demo
+- [x] 4. GitOps with ArgoCD and a rollback demo
 - [ ] 5. Prometheus, Grafana, Loki
 - [ ] 6. HPA, then KEDA
 - [ ] 7. k6 load tests and graphs

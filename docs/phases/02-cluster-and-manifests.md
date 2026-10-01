@@ -25,6 +25,9 @@
 
 ## Usage
 
+> Since Phase 4, `sampleapi-dev` is managed by Argo CD and `deploy.ps1` targets the
+> separate `sampleapi-local` namespace. See [04-gitops.md](04-gitops.md).
+
 ```powershell
 .\scripts\cluster-up.ps1
 .\scripts\deploy.ps1
