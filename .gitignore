@@ -7,6 +7,8 @@ venv/
 .ruff_cache/
 .coverage
 htmlcov/
+coverage.xml
+junit.xml
 *.egg-info/
 
 # Node (dashboard tooling, k6 helpers)

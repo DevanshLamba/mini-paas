@@ -1,0 +1,179 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    # Only app and CI changes produce a new image. Docs and manifest-only commits
+    # (including the image-tag bumps GitOps makes in Phase 4) don't trigger a rebuild.
+    paths:
+      - "app/**"
+      - "ci/**"
+      - ".github/workflows/ci.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "ci/**"
+      - ".github/workflows/ci.yml"
+  workflow_dispatch:
+
+# Least privilege by default: no job gets any token scope unless it asks for it below.
+permissions: {}
+
+# A newer push to the same branch or PR makes older in-flight runs obsolete.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # ghcr.io requires lowercase names; github.repository is "DevanshLamba/mini-paas".
+  IMAGE: ghcr.io/devanshlamba/mini-paas
+  PYTHON_VERSION: "3.13"
+  TRIVY_VERSION: v0.74.0
+
+defaults:
+  run:
+    shell: bash
+    working-directory: app
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      # Install only ruff, at the exact version pinned in requirements-dev.txt.
+      - run: pip install "$(grep '^ruff==' requirements-dev.txt)"
+      - run: ruff check --output-format=github .
+      - run: ruff format --check .
+
+  test:
+    name: Test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: app/requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - run: pytest -W error --cov-report=xml --cov-report=html --junitxml=junit.xml
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-report
+          path: |
+            app/coverage.xml
+            app/htmlcov/
+            app/junit.xml
+          retention-days: 14
+          if-no-files-found: error
+
+  build-scan-push:
+    name: Build, scan, push
+    needs: [lint, test]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write         # push to ghcr.io (only used on main)
+      security-events: write  # upload Trivy SARIF to the Security tab
+    env:
+      PUSH: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Compute short SHA
+        id: vars
+        run: echo "sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # Build once and load into the runner's Docker, so the scan and the push use the
+      # exact same image bytes.
+      - name: Build image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: app
+          load: true
+          push: false
+          build-args: APP_VERSION=${{ steps.vars.outputs.sha }}
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.vars.outputs.sha }}
+            ${{ env.IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Scan 1: full report for the Security tab. It never fails the build.
+      - name: Trivy scan (SARIF report)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          image-ref: ${{ env.IMAGE }}:${{ steps.vars.outputs.sha }}
+          format: sarif
+          output: trivy-results.sarif
+          exit-code: "0"
+
+      - name: Upload SARIF to GitHub Security tab
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-image
+
+      # Scan 2: the gate. Fail on HIGH/CRITICAL vulnerabilities that have a fix available
+      # (unfixed ones can't be acted on, so they're reported but don't block).
+      - name: Trivy scan (gate on fixable HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          image-ref: ${{ env.IMAGE }}:${{ steps.vars.outputs.sha }}
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          skip-setup-trivy: true
+
+      - name: Log in to ghcr.io
+        if: env.PUSH == 'true'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push image
+        if: env.PUSH == 'true'
+        run: docker push --all-tags "$IMAGE"
+
+      - name: Job summary
+        if: always()
+        env:
+          SHA: ${{ steps.vars.outputs.sha }}
+        run: |
+          size=$(docker image inspect "$IMAGE:$SHA" --format '{{.Size}}' 2>/dev/null || echo 0)
+          {
+            echo "### Image"
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Tag | \`$IMAGE:$SHA\` |"
+            echo "| Size (uncompressed) | $((size / 1024 / 1024)) MiB |"
+            echo "| Pushed | $PUSH |"
+          } >> "$GITHUB_STEP_SUMMARY"
