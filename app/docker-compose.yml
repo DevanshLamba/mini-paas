@@ -1,0 +1,22 @@
+# Local development: build and run the API with the same restrictions it gets in Kubernetes.
+services:
+  api:
+    build:
+      context: .
+      args:
+        APP_VERSION: local
+    image: sampleapi:local
+    ports:
+      - "8000:8000"
+    environment:
+      LOG_LEVEL: INFO
+      FAULT_INJECTION: "true"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 256M
