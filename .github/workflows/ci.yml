@@ -110,6 +110,9 @@ jobs:
       # exact same image bytes.
       - name: Build image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        env:
+          # Keep the build summary but skip the extra .dockerbuild artifact on every run.
+          DOCKER_BUILD_RECORD_UPLOAD: "false"
         with:
           context: app
           load: true
