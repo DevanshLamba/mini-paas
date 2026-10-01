@@ -15,6 +15,32 @@ only from free and open-source tools.
 image tag in `deploy/` → ArgoCD syncs it to k3d → HPA/KEDA scale it, Prometheus/Grafana/Loki
 observe it, and Chaos Mesh tries to break it.
 
+## Architecture
+
+```mermaid
+flowchart LR
+  dev[Developer] -- git push --> gh[(GitHub main)]
+  gh --> ci[CI: test, multi-arch build,<br/>Trivy, smoke test]
+  ci --> ghcr[(ghcr.io)]
+  ci -- bot commit: image tag --> gh
+  subgraph local[Laptop: k3d]
+    argoL[Argo CD] --> appL[sampleapi-dev]
+  end
+  subgraph cloud[Azure for Students: k3s VM]
+    argoC[Argo CD] --> appC[sampleapi-cloud]
+    tun[cloudflared quick tunnel] --> appC
+  end
+  subgraph ephemeral[GitHub runner, on demand]
+    k3d[k3d + k6] --> appE[sampleapi-cloud]
+  end
+  argoL & argoC -- poll --> gh
+  appL & appC & appE -- pull --> ghcr
+```
+
+The Azure VM is defined and tested in [`infra/terraform/azure`](infra/terraform/azure/) and
+created on demand (destroyed when idle to save credit). See
+[docs/phases/045-cloud.md](docs/phases/045-cloud.md).
+
 ## Repository layout
 
 | Path | Purpose |
@@ -53,6 +79,7 @@ Run the app alone without Kubernetes: `cd app; docker compose up --build`.
 - [x] 2. k3d cluster and Kubernetes manifests
 - [x] 3. CI: GitHub Actions, Trivy, ghcr.io
 - [x] 4. GitOps with ArgoCD and a rollback demo
+- [~] 4.5. Cloud environment: Azure for Students (code + tests done, VM pending `az login`), GitHub Actions fallback ✅
 - [ ] 5. Prometheus, Grafana, Loki
 - [ ] 6. HPA, then KEDA
 - [ ] 7. k6 load tests and graphs
