@@ -1,0 +1,28 @@
+# AppProject for the Azure cloud cluster. Same least-privilege idea as the local
+# mini-paas project, plus Ingress (Traefik) and the cloudflared namespace.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: mini-paas-cloud
+  namespace: argocd
+spec:
+  description: Mini-PaaS workloads on the Azure k3s VM
+  sourceRepos:
+    - https://github.com/devanshlamba/mini-paas.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: sampleapi-cloud
+    - server: https://kubernetes.default.svc
+      namespace: cloudflared
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  namespaceResourceWhitelist:
+    - group: apps
+      kind: Deployment
+    - group: ""
+      kind: Service
+    - group: networking.k8s.io
+      kind: Ingress
+  orphanedResources:
+    warn: true

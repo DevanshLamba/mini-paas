@@ -1,0 +1,30 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Cloud environment (Azure VM, single-node k3s). Same app as dev, with more replicas and
+# cloud-sized resources, exposed through Traefik (public IP and Cloudflare Tunnel).
+namespace: sampleapi-cloud
+
+resources:
+  - namespace.yaml
+  - ../../base
+  - ingress.yaml
+
+labels:
+  - pairs:
+      app.kubernetes.io/environment: cloud
+    includeSelectors: false
+    includeTemplates: true
+
+replicas:
+  - name: sampleapi
+    count: 3
+
+patches:
+  - path: patch-resources.yaml
+
+# GitOps-managed: CI's update-manifests job rewrites newTag (same SHA as dev).
+images:
+  - name: sampleapi
+    newName: ghcr.io/devanshlamba/mini-paas
+    newTag: 9c5cf2f

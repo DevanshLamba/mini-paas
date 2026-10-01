@@ -1,0 +1,56 @@
+# Cloudflare Quick Tunnel: free, no Cloudflare account, outbound-only connection.
+# It gets a random https://<words>.trycloudflare.com URL (shown in the pod logs) that
+# changes whenever the pod restarts. Cloudflare intends quick tunnels for testing and
+# demos, with no uptime guarantee, so it is not used for load tests.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: quick-tunnel
+  labels:
+    app.kubernetes.io/name: quick-tunnel
+spec:
+  replicas: 1  # each replica would get its own random URL
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: quick-tunnel
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: quick-tunnel
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: cloudflared
+          image: cloudflare/cloudflared:2026.9.3@sha256:072c067d25ccbe61d46e18f0d0723255f2bb5304f7317caa95b27031520ff92c
+          args:
+            - tunnel
+            - --no-autoupdate
+            - --metrics=0.0.0.0:2000
+            - --url=http://traefik.kube-system.svc.cluster.local:80
+          ports:
+            - name: metrics
+              containerPort: 2000
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: metrics
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]

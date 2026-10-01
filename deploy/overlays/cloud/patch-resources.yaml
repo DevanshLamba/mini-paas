@@ -1,0 +1,18 @@
+# The cloud VM has 2 vCPU / 4 GiB dedicated to this cluster, so each pod may burst to a
+# full core (laptop: 500m) and reserves a little more.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sampleapi
+spec:
+  template:
+    spec:
+      containers:
+        - name: sampleapi
+          resources:
+            requests:
+              cpu: 100m
+              memory: 96Mi
+            limits:
+              cpu: "1"
+              memory: 256Mi
