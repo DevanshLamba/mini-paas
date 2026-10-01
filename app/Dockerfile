@@ -12,11 +12,12 @@ RUN python -m venv /opt/venv
 ENV PATH=/opt/venv/bin:$PATH
 # Copy only the requirements first, so this layer stays cached until dependencies change.
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+RUN pip install -r requirements.txt \
+ # The app never installs packages at runtime; drop the venv's pip (and the libraries it vendors).
+ && pip uninstall -y pip
 
-# ---- Stage 2: minimal runtime image (no pip cache or build leftovers) ---------------
+# ---- Stage 2: minimal runtime image (no pip, no build leftovers) --------------------
 FROM ${PYTHON_IMAGE} AS runtime
-ARG APP_VERSION=dev
 LABEL org.opencontainers.image.source="https://github.com/devanshlamba/mini-paas" \
       org.opencontainers.image.description="Mini-PaaS sample FastAPI workload" \
       org.opencontainers.image.licenses="MIT"
@@ -24,17 +25,27 @@ LABEL org.opencontainers.image.source="https://github.com/devanshlamba/mini-paas
 ENV PATH=/opt/venv/bin:$PATH \
     PYTHONPATH=/app/src \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    APP_VERSION=${APP_VERSION}
+    PYTHONUNBUFFERED=1
 
-# A fixed numeric UID lets Kubernetes verify `runAsNonRoot` without reading /etc/passwd.
-RUN groupadd --system --gid 10001 app \
+# - Apply Debian security updates published after the base image was built (Trivy gate).
+# - Remove the system pip: no package installer is left for an attacker to use.
+# - A fixed numeric UID lets Kubernetes verify `runAsNonRoot` without reading /etc/passwd.
+RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
+ && rm -rf /var/lib/apt/lists/* \
+ && python -m pip uninstall -y pip \
+ && groupadd --system --gid 10001 app \
  && useradd --system --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app
 
 WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 # Code stays root-owned and read-only to the app user, so a compromised process can't modify it.
 COPY src/ ./src/
+
+# Declared late: the version changes on every commit and would otherwise invalidate the
+# (slow) layers above it.
+ARG APP_VERSION=dev
+ENV APP_VERSION=${APP_VERSION}
 
 USER 10001:10001
 EXPOSE 8000
