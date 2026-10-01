@@ -50,7 +50,7 @@ Run the app alone without Kubernetes: `cd app; docker compose up --build`.
 - [x] 0. Machine prerequisites
 - [x] 1. Sample app, Docker, tests
 - [x] 2. k3d cluster and Kubernetes manifests
-- [ ] 3. CI: GitHub Actions, Trivy, ghcr.io
+- [x] 3. CI: GitHub Actions, Trivy, ghcr.io
 - [ ] 4. GitOps with ArgoCD and a rollback demo
 - [ ] 5. Prometheus, Grafana, Loki
 - [ ] 6. HPA, then KEDA
