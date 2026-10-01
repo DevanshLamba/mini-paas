@@ -1,0 +1,29 @@
+# AppProject: the security boundary for apps deployed by the Mini-PaaS.
+# Apps in this project can only pull from this repo, only deploy into the listed
+# namespace, and only create the listed resource kinds. Anything else is refused,
+# even if someone commits it to git.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: mini-paas
+  namespace: argocd
+spec:
+  description: Workloads deployed by the Mini-PaaS
+  sourceRepos:
+    - https://github.com/devanshlamba/mini-paas.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: sampleapi-dev
+  # Cluster-scoped: only the app's own Namespace object.
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  # Namespaced: only what the app needs today. Later phases add kinds explicitly (HPA, ...).
+  namespaceResourceWhitelist:
+    - group: apps
+      kind: Deployment
+    - group: ""
+      kind: Service
+  # Flag resources in the namespace that git doesn't know about (drift someone created by hand).
+  orphanedResources:
+    warn: true

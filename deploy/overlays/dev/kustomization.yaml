@@ -13,8 +13,9 @@ labels:
     includeSelectors: false
     includeTemplates: true
 
-# Image from the local k3d registry. scripts/deploy.ps1 rewrites newTag on each deploy.
+# GitOps-managed: Argo CD deploys whatever this says. CI's update-manifests job
+# rewrites newTag to the commit SHA of every image it publishes; don't edit by hand.
 images:
   - name: sampleapi
-    newName: minipaas-registry.localhost:5050/sampleapi
-    newTag: ce87432
+    newName: ghcr.io/devanshlamba/mini-paas
+    newTag: cbc04e2

@@ -1,0 +1,32 @@
+# Application: "make the cluster match deploy/overlays/dev on main".
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sampleapi-dev
+  namespace: argocd
+  # Deleting this Application also deletes the resources it created (cascading delete).
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io/foreground
+spec:
+  project: mini-paas
+  source:
+    repoURL: https://github.com/devanshlamba/mini-paas.git
+    targetRevision: main
+    path: deploy/overlays/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: sampleapi-dev
+  revisionHistoryLimit: 10
+  syncPolicy:
+    automated:
+      prune: true     # delete resources that were removed from git
+      selfHeal: true  # undo manual changes made in the cluster (drift)
+    syncOptions:
+      - ApplyOutOfSyncOnly=true   # only re-apply resources that actually changed
+      - PrunePropagationPolicy=foreground
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
