@@ -1,0 +1,32 @@
+#cloud-config
+# First-boot setup for the k3s node. Runs once, as root.
+package_update: true
+package_upgrade: true
+packages:
+  - curl
+  - iptables-persistent
+
+write_files:
+  # k3s reads this file on start. Traefik is KEPT: it is the ingress controller that serves
+  # ports 80/443 on the public IP (via k3s's built-in ServiceLB).
+  - path: /etc/rancher/k3s/config.yaml
+    permissions: "0600"
+    content: |
+      node-name: minipaas-oci
+      write-kubeconfig-mode: "0600"
+      # Encrypt Kubernetes Secrets at rest in the k3s datastore.
+      secrets-encryption: true
+
+runcmd:
+  # Oracle's Ubuntu images ship host firewall rules that REJECT everything except SSH,
+  # including forwarded pod traffic. Open only what k3s needs; the VCN security list
+  # remains the perimeter (and does not expose the Kubernetes API).
+  - iptables -I INPUT -p tcp -m multiport --dports 80,443 -j ACCEPT
+  - iptables -I INPUT -s 10.42.0.0/16 -j ACCEPT
+  - iptables -I INPUT -s 10.43.0.0/16 -j ACCEPT
+  - iptables -D FORWARD -j REJECT --reject-with icmp-host-prohibited || true
+  - netfilter-persistent save
+  # Install script fetched from the same pinned release tag as the binary.
+  - curl -sfL "https://raw.githubusercontent.com/k3s-io/k3s/${replace(k3s_version, "+", "%2B")}/install.sh" -o /tmp/k3s-install.sh
+  - INSTALL_K3S_VERSION="${k3s_version}" sh /tmp/k3s-install.sh
+  - touch /var/lib/cloud/instance/k3s-ready

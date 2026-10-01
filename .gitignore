@@ -30,3 +30,29 @@ kubeconfig*
 
 # Load-test raw output that is too large for git (summaries are kept)
 loadtest/results/**/*.raw.json
+
+# Terraform / OpenTofu: state can hold infrastructure details, and tfvars can hold
+# secrets. Never commit them. (.terraform.lock.hcl IS committed: it pins provider checksums.)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+!*.example.tfvars
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+*.tfplan
+tfplan*
+
+# Keys: OCI API keys and SSH keys live in ~/.oci and ~/.ssh, never in the repo.
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+id_ecdsa*
+*_ed25519
+*_rsa
