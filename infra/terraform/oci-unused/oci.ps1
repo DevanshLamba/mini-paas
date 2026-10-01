@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Run Terraform or OpenTofu in infra/terraform/oci with the inputs filled in safely.
+    Run Terraform or OpenTofu in infra/terraform/oci-unused with the inputs filled in safely.
 .DESCRIPTION
     - TF_VAR_tenancy_ocid is read from ~/.oci/config (never printed or written to disk).
     - TF_VAR_ssh_allowed_cidr is your current public IP as a /32, so SSH is open to you only.
@@ -20,10 +20,10 @@ param(
     [string]$OciProfile = 'DEFAULT'
 )
 $TfArgs = $args
-. "$PSScriptRoot\_common.ps1"
+. (Join-Path $PSScriptRoot '..\..\..\scripts\_common.ps1')
 
 Assert-Tool $Tool
-$tfDir = Join-Path $RepoRoot 'infra\terraform\oci'
+$tfDir = $PSScriptRoot
 $ociConfig = Join-Path $HOME '.oci\config'
 if (-not (Test-Path $ociConfig)) {
     throw "No $ociConfig. Create an API key in the OCI Console first (see docs/phases/045-cloud.md)."
