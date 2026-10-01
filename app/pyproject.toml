@@ -1,0 +1,19 @@
+[project]
+name = "sampleapi"
+version = "0.1.0"
+description = "Sample workload for the Mini-PaaS: REST API with health, metrics and a CPU-heavy endpoint"
+requires-python = ">=3.13"
+license = "MIT"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-q --cov=sampleapi --cov-report=term-missing"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
