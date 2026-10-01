@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sampleapi
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Never drop below the desired replica count during a rollout (zero downtime);
+      # start one extra pod at a time instead.
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sampleapi
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: sampleapi
+    spec:
+      # The app never talks to the Kubernetes API, so it gets no API token.
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      # Prefer spreading replicas across nodes, so losing one node doesn't take down every pod.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: sampleapi
+      containers:
+        - name: sampleapi
+          image: sampleapi  # replaced by the overlay's `images:` entry
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          resources:
+            # Requests: what the scheduler reserves, and the baseline HPA computes CPU % against.
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            # Limits: hard caps. Exceeding memory gets the container OOM-killed;
+            # exceeding CPU only throttles it.
+            limits:
+              cpu: 500m
+              memory: 128Mi
+          # Startup: gives a slow start up to 30s before liveness is allowed to kill the pod.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 1
+            failureThreshold: 30
+          # Liveness: restart the container if the process stops responding.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          # Readiness: only send traffic to pods that report ready.
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
+          lifecycle:
+            # Wait for endpoint removal to reach every node before SIGTERM, so in-flight
+            # traffic isn't sent to a pod that is exiting. Native sleep needs no shell.
+            preStop:
+              sleep:
+                seconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
